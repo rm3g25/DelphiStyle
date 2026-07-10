@@ -1,0 +1,13 @@
+# Local version archive - history lives in git, not here
+OLD/
+
+# Repository build tooling - the changelog already lives in the commit messages
+setup.ps1
+changelog.txt
+
+# Editor and OS noise
+.vs/
+.idea/
+*.swp
+Thumbs.db
+.DS_Store

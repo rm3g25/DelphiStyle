@@ -1,0 +1,7 @@
+* text=auto
+
+# The guide's own rule (CODESTYLE.md, section 3): Delphi sources are CRLF
+*.pas text eol=crlf
+*.dpr text eol=crlf
+*.dpk text eol=crlf
+*.dfm text eol=crlf
