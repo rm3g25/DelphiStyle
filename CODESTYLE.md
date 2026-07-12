@@ -507,7 +507,101 @@ something that should have lived in a name or in the structure. Four categories:
 
 ---
 
-## 10. Forms and dynamic controls
+## 10. Grouping related data into records
+
+Two tests - either one firing is enough to group:
+
+1. **The prefix test.** Several fields sharing a name prefix are a record
+   asking to be born. The prefix already *is* the record's name, just smeared
+   across four lines:
+
+   ```pascal
+   // BAD - a prefix herd
+   FProxyHost: string;
+   FProxyPort: Integer;
+   FProxyUser: string;
+   FProxyPassword: string;
+
+   // GOOD
+   type
+     TProxySettings = record
+       Host: string;
+       Port: Integer;
+       User: string;
+       Password: string;
+       function Enabled: Boolean; // small derived helpers are fine
+     end;
+   // ...
+   FProxy: TProxySettings;
+   ```
+
+2. **The travel test.** Variables that always move together - passed together
+   as parameters, saved together, validated together - belong in one record,
+   even without a shared prefix.
+
+**Record vs class:** a record (value semantics, no lifetime, nothing to free)
+for passive data bundles - settings, coordinates, operation results. A class
+when the thing has identity, lifetime, or behavior beyond storing. Advanced
+records may carry small derived helpers (`Enabled`, a `Default` factory) but
+no business logic - a record that starts making HTTP calls is a class in a
+trench coat.
+
+**The property-copy trap.** A property of record type returns a **copy**.
+Mutating a field through the property either fails to compile or silently
+edits a temporary:
+
+```pascal
+// TRAP - edits a copy (or does not compile)
+Client.Proxy.Port := 8080;
+
+// CORRECT - take the whole record, change it, assign it back
+var Proxy := Client.Proxy;
+Proxy.Port := 8080;
+Client.Proxy := Proxy;
+```
+
+Inside the owning class, access the record **field** (`FProxy.Port := 8080`)
+directly - the trap only exists on the property path.
+
+---
+
+## 11. Conditional compilation
+
+- **Directives and symbols in uppercase**: `{$IFDEF DEBUG}` ... `{$ENDIF}`,
+  symbols like `MSWINDOWS`, `CONSOLE`. This is the convention of the RTL/VCL
+  sources and virtually all modern code; lowercase `{$ifdef}` reads as ported
+  FPC.
+- **Compound conditions** use the modern `$IF` form with `Defined` spelled as
+  the intrinsic function it is:
+  `{$IF Defined(MSWINDOWS) and not Defined(CONSOLE)}`. Close with `{$ENDIF}`
+  (not the legacy `{$IFEND}`).
+- When the closing `{$ENDIF}` sits far from its opening, add a trailing
+  comment: `{$ENDIF} // MSWINDOWS`.
+- **The real rule: an `{$IFDEF}` scattered mid-logic is a smell.** Each symbol
+  should be tested in one place - behind a function, a constant, or a unit -
+  so that calling code reads unconditionally. Ifdef confetti through a method
+  body is code that reads differently depending on which platform you hold in
+  your head, which means it does not read at all.
+
+```pascal
+// BAD - the logic is interleaved with platform noise
+procedure TAgent.Log(const AText: string);
+begin
+  {$IFDEF MSWINDOWS}
+  OutputDebugString(PChar(AText));
+  {$ENDIF}
+  {$IFDEF CONSOLE}
+  Writeln(AText);
+  {$ENDIF}
+end;
+
+// GOOD - one function owns the difference; every caller reads unconditionally
+procedure WriteToPlatformLog(const AText: string);
+```
+
+---
+
+## 12. Forms and dynamic controls
 
 The form designer exists precisely so that static UI can be laid out once and
 forgotten. Use it.
