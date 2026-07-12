@@ -1,5 +1,7 @@
 # CODESTYLE.md
 
+**Version 3.1**
+
 Modern, strict, homogeneous Object Pascal (Delphi). This document is the
 **source of truth** for any human or LLM writing or reviewing code in this
 project. When generating code, follow these rules over statistically common
@@ -94,6 +96,23 @@ Keep the classic short-prefix style:
 TAgentState = (asIdle, asRunning, asStopped);
 ```
 
+### Acronyms are words, not shouting
+Capitalize an acronym as a normal word: `Http`, `Url`, `Json`, `Api`, `Sql`.
+Not `HTTP`, `URL`, `JSON`. All-caps acronyms collide into unreadable walls the
+moment two of them meet:
+
+```pascal
+// BAD
+HTTPURLParser: THTTPJSONClient;
+
+// GOOD
+HttpUrlParser: THttpJsonClient;
+```
+
+The one exception is a single-word type where no collision is possible and the
+RTL already established the spelling (`TJSONObject` from the RTL stays as the
+RTL named it - do not rename other people's types).
+
 ### No double negations
 `IsValid`, not `IsNotInvalid`. A name that must be mentally inverted at every
 call site (`if not IsNotValid then`) is read three times instead of once.
@@ -178,7 +197,7 @@ for var Text in AMessages do
 ## 5. Subprograms vs methods
 
 Deciding whether a piece of logic becomes a **nested subprogram** or a
-**private method** uses a two-step test. Apply them in order:
+**private method** uses a three-step test. Apply them in order:
 
 1. **Used in more than one method?** → private method. No further thought.
 2. **Used only here, but does NOT touch the outer method's locals** (only its
@@ -375,6 +394,12 @@ benefit that may never arrive.
 Turn a literal into a constant when it is **either** used more than once **or**
 carries a hidden meaning the literal itself does not explain. Otherwise leave it
 inline.
+
+**The sharper form of the same rule: numbers are magic, text usually is not.**
+A bare number never explains itself - why 20 and not 15 or 30? It needs a name
+to carry its meaning. A string often *is* its own meaning: `'legacygrep.log'`
+reads exactly as what it is. So a magic number is almost always a constant; a
+one-off string usually is not.
 
 - **Protocol keys / fixed-vocabulary values** (JSON keys, schema type values,
   tool names read in two or more places across the system) → **constants**. A
@@ -595,8 +620,23 @@ begin
   {$ENDIF}
 end;
 
-// GOOD - one function owns the difference; every caller reads unconditionally
+// GOOD - one function owns the platform difference; every caller reads
+// unconditionally. The ifdefs live in exactly one place, not in the logic.
 procedure WriteToPlatformLog(const AText: string);
+begin
+  {$IF Defined(MSWINDOWS)}
+  OutputDebugString(PChar(AText));
+  {$ELSEIF Defined(CONSOLE)}
+  Writeln(AText);
+  {$ELSE}
+  // no platform sink available - deliberately silent
+  {$ENDIF}
+end;
+
+procedure TAgent.Log(const AText: string);
+begin
+  WriteToPlatformLog(AText); // reads the same on every platform
+end;
 ```
 
 ---
