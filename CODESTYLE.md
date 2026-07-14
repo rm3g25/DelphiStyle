@@ -1,6 +1,6 @@
 # CODESTYLE.md
 
-**Version 3.1**
+**Version 3.2**
 
 Modern, strict, homogeneous Object Pascal (Delphi). This document is the
 **source of truth** for any human or LLM writing or reviewing code in this
@@ -112,6 +112,36 @@ HttpUrlParser: THttpJsonClient;
 The one exception is a single-word type where no collision is possible and the
 RTL already established the spelling (`TJSONObject` from the RTL stays as the
 RTL named it - do not rename other people's types).
+
+### Unit names: no `u` prefix, dotted subsystem namespaces
+**New projects: drop the `u` prefix.** `uMenu.pas` is a relic of flat folders,
+weak IDEs, and Hungarian notation. It carries zero information - the same
+letter on every file distinguishes nothing - and every original reason for it
+(spotting your units in a flat list, avoiding name collisions) is solved better
+by folders, the IDE, and namespaces. The RTL itself dropped it long ago:
+`System.SysUtils`, `FMX.Forms`.
+
+Group by subsystem with a dotted namespace instead:
+
+```
+// BAD
+uMenu.pas
+uMonsterParser.pas
+uSprites.pas
+
+// GOOD
+Menu.pas
+Monsters.Parser.pas
+Render.Sprites.pas
+```
+
+Do **not** prepend the project name (`Moon.Monsters.Parser.pas`). It is armor
+against a collision that does not happen in a project without competing
+third-party units - the RTL needs it, you do not.
+
+**Legacy projects keep their prefix.** A codebase already full of `u*.pas`
+stays that way: uniformity beats modernity. Mixing the two styles in one folder
+is worse than either style consistently applied.
 
 ### No double negations
 `IsValid`, not `IsNotInvalid`. A name that must be mentally inverted at every
