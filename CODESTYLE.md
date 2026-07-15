@@ -1,6 +1,6 @@
 # CODESTYLE.md
 
-**Version 3.2**
+**Version 3.3**
 
 Modern, strict, homogeneous Object Pascal (Delphi). This document is the
 **source of truth** for any human or LLM writing or reviewing code in this
@@ -88,6 +88,13 @@ MaxRetries = 3;
 // BAD
 MAX_RETRIES = 3;
 ```
+
+No `c` prefix either (`cMaxRetries`). Whether a name is a constant or a
+variable is information you need at exactly one point - when you try to assign
+to it, where the compiler stops you for free - not on every read. The name
+should carry the meaning (`MaxRetries` - a retry ceiling); const-ness is
+metadata that does not earn a character on every line. (Contrast `F` on
+fields, which *is* needed on every read, to tell object state from a local.)
 
 ### Enumeration members
 Keep the classic short-prefix style:
