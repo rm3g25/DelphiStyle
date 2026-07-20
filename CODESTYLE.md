@@ -1,6 +1,6 @@
 # CODESTYLE.md
 
-**Version 3.3**
+**Version 3.6**
 
 Modern, strict, homogeneous Object Pascal (Delphi). This document is the
 **source of truth** for any human or LLM writing or reviewing code in this
@@ -625,6 +625,36 @@ Client.Proxy := Proxy;
 Inside the owning class, access the record **field** (`FProxy.Port := 8080`)
 directly - the trap only exists on the property path.
 
+### Generics: depth by expedience, not by fashion
+A generic earns its place when it removes a cast or a duplication **and** its
+signature reads in one pass. `TList<TMonster>` instead of `TList` with `as
+TMonster` on every access - yes: safer and shorter at the point of use.
+`TDictionary<string, TMovementKind>` - yes, one level, read at a glance.
+
+The rule is the principle of expedience applied to type machinery: exactly as
+much as carries meaning, not one turn more.
+
+> **Rule:** Type-parameter nesting deeper than one level → give the inner type
+> a name. `TDictionary<string, TList<TMonster>>` is the boundary;
+> `TObjectDictionary<string, TList<TPair<Integer, TMonster>>>` is a puzzle, not
+> a type. The cure is not "avoid generics" - it is the same move as the record
+> rule above: name the inner type.
+
+```pascal
+// BAD - a clause inside a clause; read to the end, forget the start
+FGroups: TObjectDictionary<string, TList<TPair<Integer, TMonster>>>;
+
+// GOOD - the inner type gets a name, the outer generic is one level again
+type
+  TMonsterGroup = class ... end;   // wraps the inner TList<TPair<...>>
+// ...
+FGroups: TObjectDictionary<string, TMonsterGroup>;
+```
+
+A one-level generic that still feels unfamiliar is a matter of mileage, not
+bad code - write it, get used to it. A nested one is objectively hard for
+everyone, author included - do not learn to read it, learn not to write it.
+
 ---
 
 ## 11. Conditional compilation
@@ -678,7 +708,47 @@ end;
 
 ---
 
-## 12. Forms and dynamic controls
+## 12. Unit structure: `uses` placement
+
+Split the `uses` clause by contract, not by habit.
+
+- **`interface uses`** - only modules whose types appear in the `interface`
+  section: method-parameter types, field types, ancestors, return types -
+  anything visible in a public signature. If a type shows outside the unit, its
+  module belongs here, or callers will not compile.
+- **`implementation uses`** - everything needed only by method bodies. If a
+  module is used internally but never surfaces in any signature, it goes below
+  `implementation`. This is the **preferred default**, not a mere option: keep
+  the interface thin.
+
+The one-line test: **is the type visible in the `interface` section?** → up.
+**Visible only in method bodies?** → down.
+
+Why thin-interface is the default:
+- **Transparent contract.** `interface uses` should read as what the unit is
+  coupled to *as a contract*, not as every incidental helper it calls inside.
+- **Build cost.** `interface uses` leaks transitively - everyone who uses your
+  unit inherits your interface dependencies. `implementation uses` does not.
+- A module in `implementation` is then an honest signal - "internal detail, not
+  part of my contract" - rather than a hiding place.
+
+### Circular dependencies: fix by architecture, not by pushing `uses` down
+Delphi rejects two units that reference each other through `interface uses`
+("circular unit reference"). Moving the `uses` to `implementation` makes the
+compiler accept it - but that is treating a symptom. A cycle usually means the
+boundary is drawn in the wrong place: the two units share something that belongs
+to neither.
+
+The fix is not to bury the dependency downward so it compiles - it is to extract
+the shared type or interface into a third unit both depend on, with the
+dependency flowing one way. Same principle as subsystem extraction and as naming
+the inner type out of a nested generic: **common thing up into its own home,
+dependency in one direction only.** Pushing `uses` down to tolerate a cycle is a
+last resort for legacy knots, not a design tool.
+
+---
+
+## 13. Forms and dynamic controls
 
 The form designer exists precisely so that static UI can be laid out once and
 forgotten. Use it.
@@ -690,6 +760,44 @@ forgotten. Use it.
 
 Building a static form entirely in code because it is "cleaner" ignores the tool
 the language gives you for exactly this job.
+
+---
+
+## 14. Memory management and ownership
+
+Delphi memory is manual and its mistakes are silent - a leak or a
+use-after-free compiles cleanly and fails later. Ownership must be explicit, not
+inferred at the point of freeing.
+
+### Explicit ownership
+Create in the constructor, free in the matching destructor. The create/destroy
+pair is symmetric like `Load/Save` - one owner, one lifetime. If ownership is
+clear, no method should ever have to check whether it is allowed to free
+something.
+
+### `Free` vs `FreeAndNil` - choose by lifetime, not by ritual
+- A local that dies at method end → plain `Free`. Nil-ing it is pointless; it
+  is about to go out of scope.
+- A field that may be accessed or recreated later → `FreeAndNil`, so a later
+  access fails loudly on `nil` instead of reading freed memory (a heisenbug).
+
+What to avoid is `FreeAndNil` - or `if Assigned(X) then X.Free` - used as a
+talisman against not knowing who owns the object. If you genuinely do not know
+whether you own it, the ownership model is broken; fix that, do not paper over
+it with a guard.
+
+Legitimate exceptions where the nil check is **not** a smell:
+- a destructor running after a constructor that raised halfway through (fields
+  past the failure point are still `nil`);
+- a field being deliberately torn down and rebuilt (`FreeAndNil(FConn);
+  FConn := TConn.Create(...)`), where `nil` between the two lines is a valid
+  transient state.
+
+### `nil` as a value vs `nil` as confusion
+Same syntax, opposite meaning - the canon must not confuse them:
+- `nil` meaning "optional / not found / not set" is a **valid state**. Guard it
+  with `if X = nil then Exit` as much as you like - not a smell.
+- `nil` used to **guess** whether something still needs freeing is the smell.
 
 ---
 
