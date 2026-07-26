@@ -1,6 +1,6 @@
 # CODESTYLE.md
 
-**Version 3.6**
+**Version 3.7**
 
 Modern, strict, homogeneous Object Pascal (Delphi). This document is the
 **source of truth** for any human or LLM writing or reviewing code in this
@@ -732,6 +732,22 @@ Why thin-interface is the default:
 - A module in `implementation` is then an honest signal - "internal detail, not
   part of my contract" - rather than a hiding place.
 
+### Units included for side effects need a comment
+Some units are listed not for any symbol you reference, but for what their
+`initialization` section does - registering a driver, a codec, a factory. Their
+names appear nowhere in the code, so the next person to "clean up unused uses"
+will delete them and the program will fail at runtime, not at compile time.
+Mark them:
+
+```pascal
+uses
+  // link-only: registration happens in their initialization sections.
+  // Referenced by no symbol - do not "clean up".
+  FireDAC.Phys.SQLite,
+  FireDAC.Stan.Async,
+  FireDAC.DApt;
+```
+
 ### Circular dependencies: fix by architecture, not by pushing `uses` down
 Delphi rejects two units that reference each other through `interface uses`
 ("circular unit reference"). Moving the `uses` to `implementation` makes the
@@ -798,6 +814,65 @@ Same syntax, opposite meaning - the canon must not confuse them:
 - `nil` meaning "optional / not found / not set" is a **valid state**. Guard it
   with `if X = nil then Exit` as much as you like - not a smell.
 - `nil` used to **guess** whether something still needs freeing is the smell.
+
+---
+
+## 15. Tests
+
+Everything above applies to test code unchanged - naming, `uses` placement,
+ownership, no aligned columns. Test-only helper classes (mocks, builders) are
+implementation details: declare them in `implementation`, not `interface`.
+
+Four rules are specific to tests:
+
+### Name the behavior, not the method
+A test name is read when it goes red. `TestAcquire` tells you nothing;
+`TestAcquireReturnsActive` tells you what broke before you open the file.
+
+```pascal
+// BAD - names the method under test
+procedure TestIncFail;
+
+// GOOD - names the expected behavior
+procedure TestIncFailRaisesCountAndStampsTime;
+```
+
+Pick one convention across the suite and hold it - mixed styles cost more than
+either style.
+
+### DRY is weaker in tests than in production code
+This is the one place the guide reverses itself. A test must be readable **in
+place**: if understanding what is being verified requires jumping to three
+helpers, the extraction traded the wrong thing.
+
+- Duplicated **test data** (the same host and port in five tests) - acceptable.
+- Duplicated **setup logic** (building the same fixture graph by hand five
+  times) - extract.
+
+The test is documentation that happens to execute; documentation you have to
+chase across the file has failed at its main job.
+
+### Every test must be able to fail
+If you cannot name the breakage it would catch, it is not a test.
+
+```pascal
+// BAD - cannot fail; the constructor cannot return nil
+procedure TProxyCheckerTests.TestCheckerCreatedWithUrl;
+begin
+  Assert.IsNotNull(FChecker);
+end;
+```
+
+A test that passes no matter what is worse than no test: it costs maintenance
+and pays in false confidence.
+
+Multiple asserts in one test are fine when they describe **one** behavior
+(initial state, a state transition). One-assert-per-test is dogma, not a rule.
+
+### Generated files are out of scope
+DUnitX project files, IDE scaffolding, designer output - do not restyle them.
+Lowercase locals in a generated `.dpr` are not a violation to fix; the next
+regeneration erases the edit anyway. The guide governs code you author.
 
 ---
 
