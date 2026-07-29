@@ -1,6 +1,6 @@
 # CODESTYLE.md
 
-**Version 3.7**
+**Version 3.8**
 
 Modern, strict, homogeneous Object Pascal (Delphi). This document is the
 **source of truth** for any human or LLM writing or reviewing code in this
@@ -203,6 +203,29 @@ var
   Http: TNetHTTPClient;
   ReqBody: TJSONObject;
   EndpointUrl: string;
+```
+
+### File-level: line endings and encoding
+These are non-negotiable and machine-checkable. Tools that generate Pascal
+source get both wrong by default - LF-normalized, BOM-less - so state them
+explicitly.
+
+- **Line endings: CRLF.** RAD Studio warns on LF-terminated source
+  (`Line endings are LF, but RAD Studio requires CRLF`). Every `.pas`, `.dpr`,
+  `.dpk` uses CRLF.
+- **Encoding: UTF-8 with BOM.** Without the BOM the IDE reads the file as ANSI
+  in the system codepage, and any non-ASCII byte - a Cyrillic
+  `resourcestring` value, an em dash in a comment - turns to mojibake. ASCII-only
+  files survive either way, but do not rely on staying ASCII-only forever.
+
+Do not rely on discipline alone - pin it in the repository so it holds
+regardless of who or what wrote the file:
+
+```gitattributes
+*.pas text eol=crlf
+*.dpr text eol=crlf
+*.dpk text eol=crlf
+*.dfm text eol=crlf
 ```
 
 ---
