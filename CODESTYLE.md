@@ -1,6 +1,6 @@
 # CODESTYLE.md
 
-**Version 3.8**
+**Version 4.2**
 
 Modern, strict, homogeneous Object Pascal (Delphi). This document is the
 **source of truth** for any human or LLM writing or reviewing code in this
@@ -10,6 +10,33 @@ patterns found elsewhere.
 The guiding principle behind every rule below: **code is read far more often
 than it is written.** Optimize for the reviewer six months from now, not for
 the fastest way to make it compile today.
+
+### Why this document exists
+Without an explicit style guide, an LLM defaults to the pattern most common in
+its training data, not the pattern that is architecturally best. For this stack
+that default skews toward long monolithic methods, controls created in code, and
+literals inlined everywhere - because that is how the task most often appears in
+public code. Delphi makes this worse than most: the public corpus is decades
+deep and largely pre-modern, so the statistical pull runs toward the old way.
+This document exists to override that default. The more concrete the rule, the
+less the generated code slides back into the statistical average.
+
+### The extraction principle
+One move recurs throughout this guide under different names. Naming it once so
+the later sections can point at it instead of restating it:
+
+> **Extraction principle: when a thing is shared, lift it into its own named
+> home and let the dependency flow one way.**
+
+Its three appearances:
+- Fields that travel together → lift into a record (§10).
+- A generic nested inside a generic → lift the inner type into a named type
+  (§10).
+- Two units that reference each other → lift the shared type into a third unit
+  both depend on (§12).
+
+The failure mode it prevents is always the same: something with no home of its
+own gets smeared across the places that need it.
 
 ---
 
@@ -205,6 +232,56 @@ var
   EndpointUrl: string;
 ```
 
+### Line width and indentation
+- **Soft limit 100 columns.** Past 100, wrap. Under 100, use judgement - a hard
+  limit produces ugly breaks to save three characters, no limit produces
+  worm-length lines.
+- **Two spaces per level, never tabs.** The IDE default, and what the RTL is
+  written in.
+
+The goal is not to imitate the RTL for its own sake - it is that people who read
+RTL sources every day should not bleed from the eyes reading yours.
+
+### Wrapping parameter lists
+Fits on one line → one line. Does not fit → continuation indented one level:
+
+```pascal
+// GOOD
+function SendRequest(const ASystemPrompt: string; AIncludeTools: Boolean;
+  const ANudge: string): TJSONObject;
+```
+
+Do not put each parameter on its own line - that is a C#/Java habit, not a
+Pascal one. **Five or more parameters is not a wrapping problem, it is a
+signature smell**: apply the travel test from §10 and group the ones that
+always move together into a record.
+
+### Wrapping boolean conditions
+A condition is wrapped only when it does not fit. Do not break a short one to
+look symmetrical:
+
+```pascal
+// GOOD - fits, so one line
+if (Response.StatusCode = 429) or (Response.StatusCode = 529) then
+
+// GOOD - does not fit; operator stays at the end, continuation indented
+if (Response.StatusCode = 429) or (Response.StatusCode = 529) or
+  (FRetryPolicy.Mode = rmAggressive) and (FAttemptCount < FMaxAttempts) then
+```
+
+Operator at the **end** of the line, not the start. Leading operators scan
+better in the abstract, but they read as foreign in Delphi - consistency with
+the surrounding ecosystem wins, the same way it did for uppercase compiler
+directives.
+
+**Three or more terms in a condition is a candidate for a named function.** Even
+correctly wrapped, the example above reads poorly; the real fix removes the wrap
+entirely:
+
+```pascal
+if IsRetryable(Response.StatusCode) and FRetryPolicy.ShouldRetry(FAttemptCount) then
+```
+
 ### File-level: line endings and encoding
 These are non-negotiable and machine-checkable. Tools that generate Pascal
 source get both wrong by default - LF-normalized, BOM-less - so state them
@@ -251,6 +328,45 @@ No `begin/end` for a single statement. Keep one-liners as one line:
 for var Text in AMessages do
   AppendUserMessage(Text);
 ```
+
+### `with` - do not use it
+No exceptions in new code. `with` is the one legacy construct with no case left
+in its favour:
+
+- **Silent shadowing.** `with Proxy do Port := 8080;` compiles and works. The day
+  someone adds a `Port` field to the enclosing class, that same line silently
+  writes somewhere else - no error, no warning. Adding a field changes the
+  behaviour of code that did not move.
+- **`with A, B do` resolves right to left.** Unreadable, and that is not an
+  exaggeration.
+- **The debugger goes blind** - identifiers inside a `with` often cannot be
+  evaluated or inspected.
+- **It defeats grep.** `Port := 8080` will not be found by searching for
+  `Proxy.Port`. In a large legacy codebase, a symbol you cannot search for is a
+  symbol you cannot maintain.
+
+The only argument for `with` was brevity on deep access, and inline `var` does
+that better:
+
+```pascal
+// BAD
+with FConfig.Network.Proxy do
+begin
+  Host := 'localhost';
+  Port := 8080;
+end;
+
+// GOOD - explicit, greppable, visible to the debugger
+var Proxy := FConfig.Network.Proxy;
+Proxy.Host := 'localhost';
+Proxy.Port := 8080;
+```
+
+If the target is a **record**, that local is a copy - assign it back (§10,
+property-copy trap). For a class instance it works as written.
+
+Legacy code keeps its `with` blocks; do not sweep through old units rewriting
+them.
 
 ---
 
@@ -378,12 +494,12 @@ begin
   LogResponse(Response.StatusCode, RespStr);
 
   if Response.StatusCode <> 200 then
-    raise Exception.CreateFmt('HTTP %d from Anthropic: %s',
+    raise EAgentError.CreateFmt('HTTP %d from Anthropic: %s',
                               [Response.StatusCode, RespStr]);
 
   Result := TJSONObject.ParseJSONValue(RespStr) as TJSONObject;
   if Result = nil then
-    raise Exception.CreateFmt('Failed to parse Anthropic response: %s', [RespStr]);
+    raise EAgentError.CreateFmt('Failed to parse Anthropic response: %s', [RespStr]);
 
   LogAnthropicUsage(Result);
 end;
@@ -557,19 +673,16 @@ something that should have lived in a name or in the structure. Four categories:
 ## 9. Free functions vs class methods
 
 - **Free function in a unit** - the default for anything not bound to a specific
-  class by meaning. If it does not need `Self` and is not about the class as a
-  concept, it does not belong inside the class. Putting `EscapeJsonString` into
-  `TAgentClient` as a `class function` lies about its ownership - it is about
-  strings, not about agents.
+  class by meaning. Putting `EscapeJsonString` into `TAgentClient` as a
+  `class function` lies about ownership: it is about strings, not about agents.
 
   ```pascal
   function EscapeJsonString(const AText: string): string;
   ```
 
-- **`class function` / `class procedure`** - only when the work genuinely
-  belongs to the class as a concept but needs no instance. Legitimate cases:
-  factory methods, class-level state, and validation logic that truly knows
-  something class-specific that nobody outside knows.
+- **`class function` / `class procedure`** - only when the work belongs to the
+  class as a concept but needs no instance: factory methods, class-level state,
+  validation that knows something class-specific.
 
   ```pascal
   type
@@ -581,10 +694,8 @@ something that should have lived in a name or in the structure. Four categories:
     end;
   ```
 
-  The test is the same duck test used for subprograms, one level up: ask not
-  "can I make this a `class function`" but "**does this logic depend on being on
-  this particular class, or would it work for anything?**" Depends → `class
-  function`. Does not → free function.
+  The test: **does this logic depend on being on this particular class, or would
+  it work for anything?** Depends → `class function`. Does not → free function.
 
 - **Separate module** - when the function is used in more than one place in the
   project. Not before. Do not spawn a `Utils.pas` for a single function used in
@@ -660,8 +771,8 @@ much as carries meaning, not one turn more.
 > **Rule:** Type-parameter nesting deeper than one level → give the inner type
 > a name. `TDictionary<string, TList<TMonster>>` is the boundary;
 > `TObjectDictionary<string, TList<TPair<Integer, TMonster>>>` is a puzzle, not
-> a type. The cure is not "avoid generics" - it is the same move as the record
-> rule above: name the inner type.
+> a type. The cure is not "avoid generics" - it is the extraction principle
+> (see intro): name the inner type.
 
 ```pascal
 // BAD - a clause inside a clause; read to the end, forget the start
@@ -778,12 +889,10 @@ compiler accept it - but that is treating a symptom. A cycle usually means the
 boundary is drawn in the wrong place: the two units share something that belongs
 to neither.
 
-The fix is not to bury the dependency downward so it compiles - it is to extract
-the shared type or interface into a third unit both depend on, with the
-dependency flowing one way. Same principle as subsystem extraction and as naming
-the inner type out of a nested generic: **common thing up into its own home,
-dependency in one direction only.** Pushing `uses` down to tolerate a cycle is a
-last resort for legacy knots, not a design tool.
+The fix is not to bury the dependency downward so it compiles - it is the
+extraction principle (see intro): lift the shared type or interface into a third
+unit both depend on, dependency flowing one way. Pushing `uses` down to tolerate
+a cycle is a last resort for legacy knots, not a design tool.
 
 ---
 
@@ -840,7 +949,90 @@ Same syntax, opposite meaning - the canon must not confuse them:
 
 ---
 
-## 15. Tests
+## 15. Exceptions
+
+### Raise your own type, never bare `Exception`
+A caller cannot distinguish `Exception` from any other disaster, so it cannot
+handle it selectively. Define an exception per domain (`EAgentError`,
+`EMonsterDefError`) and raise that.
+
+```pascal
+// BAD - indistinguishable from out-of-memory
+raise Exception.CreateFmt('HTTP %d: %s', [Code, Body]);
+
+// GOOD
+raise EAgentError.CreateFmt('HTTP %d: %s', [Code, Body]);
+```
+
+### `Create` goes before `try`, not inside it
+`try/finally` is an ownership tool, not error handling. If the constructor
+raises inside the `try`, `finally` runs against an uninitialized variable.
+
+```pascal
+// GOOD
+Http := TNetHttpClient.Create(nil);
+try
+  ...
+finally
+  Http.Free;
+end;
+```
+
+For several objects in one scope, either nest the blocks, or nil them all before
+a single `try`:
+
+```pascal
+Http := nil;
+Body := nil;
+try
+  Http := TNetHttpClient.Create(nil);
+  Body := TJSONObject.Create;
+  ...
+finally
+  Body.Free;
+  Http.Free;
+end;
+```
+
+This is a **named exception to §14**: here the pre-nil is the mechanism that
+makes a single `finally` correct, not a talisman against unknown ownership.
+
+### Catch narrowly - with two deliberate exceptions
+Catch the type you can actually act on (`on E: EMonsterDefError`). A blanket
+`on E: Exception` also swallows `EOutOfMemory` and `EAccessViolation`, which you
+cannot meaningfully handle. An empty `except end` is the worst construct in the
+language.
+
+Two places where a broad catch is **correct**, not sloppy:
+- the top of a thread's `Execute` - otherwise an exception vanishes silently;
+- a plugin/script boundary that must not take the host down.
+
+### `try/except` is not a talisman
+Wrapping a method in `except` so that "it does not crash" hides the breakage
+instead of handling it - the same disease as a defensive `FreeAndNil` (§14).
+Catch only where you have something to do with what you caught.
+
+### Exceptions are not control flow
+"Not found" and "did not parse" are results, not catastrophes - return `Boolean`
+with an `out` parameter instead of raising.
+
+This is where the RTL `Try` convention applies: `Try*` returns `Boolean` and
+does not raise (`TryStrToInt`, `TryGetValue`, `TryEncodeDate`); the plain name
+raises. The payoff is at the call site - `if TryParseX(S, Value) then` announces
+that failure is routine, while `Value := ParseX(S)` announces that failure needs
+a handler.
+
+Provide **one** of the pair, not both, unless both are genuinely called - the
+RTL ships both because it serves a million callers; your unit serves one
+scenario. Choose by the nature of the failure: recoverable at the call site →
+`Try`; a sign of corrupt input → raise with context. A bad `movement.kind` in a
+monster definition means the data file is broken, so `ParseMovementKind` should
+raise `EMonsterDefError` naming the monster and the field - a `Try` variant there
+would invite silently defaulting to `mkStatic` and losing an afternoon to it.
+
+---
+
+## 16. Tests
 
 Everything above applies to test code unchanged - naming, `uses` placement,
 ownership, no aligned columns. Test-only helper classes (mocks, builders) are
@@ -896,14 +1088,3 @@ Multiple asserts in one test are fine when they describe **one** behavior
 DUnitX project files, IDE scaffolding, designer output - do not restyle them.
 Lowercase locals in a generated `.dpr` are not a violation to fix; the next
 regeneration erases the edit anyway. The guide governs code you author.
-
----
-
-## Appendix: on generation defaults
-
-Without an explicit style guide, an LLM defaults to the pattern most common in
-its training data, not the pattern that is architecturally best. For this stack
-that default skews toward long monolithic methods, controls created in code, and
-literals inlined everywhere - because that is how the task most often appears in
-public code. This document exists to override that default. The more concrete
-the rule, the less the generated code slides back into the statistical average.
