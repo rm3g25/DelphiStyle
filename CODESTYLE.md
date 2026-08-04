@@ -1,6 +1,6 @@
 # CODESTYLE.md
 
-**Version 4.2**
+**Version 4.3**
 
 Modern, strict, homogeneous Object Pascal (Delphi). This document is the
 **source of truth** for any human or LLM writing or reviewing code in this
@@ -213,10 +213,16 @@ every `Integer` "for symmetry". `const` is a signal, not decoration.
 
 ## 3. Formatting
 
-- **No aligned columns.** Do not pad with spaces so that colons or types line
-  up under each other. That style is dead; the padding is maintenance debt with
-  zero payoff.
-- Colon tight to the name, one space, then the type.
+- **No aligned columns - anywhere.** Never pad with spaces to line things up
+  under each other: not colons in `var`, not `=` in `const`, not class fields,
+  not trailing comments, not argument lists. The padding is maintenance debt
+  with zero payoff.
+- Colon tight to the name, one space, then the type. One space before a
+  trailing `//`.
+
+Why it is debt: renaming one identifier forces you to re-pad every neighbouring
+line, so a one-line change shows up as a ten-line diff. The alignment also
+collapses the moment one entry outgrows the column - and something always does.
 
 ```pascal
 // BAD - aligned columns
@@ -227,9 +233,39 @@ var
 
 // GOOD
 var
-  Http: TNetHTTPClient;
+  Http: TNetHttpClient;
   ReqBody: TJSONObject;
   EndpointUrl: string;
+```
+
+```pascal
+// BAD - aligned values and aligned trailing comments
+const
+  JumpDel = 6;       // jump deceleration divisor
+  StartUscor = 4;    // initial jump boost multiplier
+  Gravity = Step / 14;     // per-tick fall acceleration
+
+// GOOD - one space before //, let the ends fall where they fall
+const
+  JumpDel = 6; // jump deceleration divisor
+  StartUscor = 4; // initial jump boost multiplier
+  Gravity = Step / 14; // per-tick fall acceleration
+```
+
+**A trailing comment that needs a second line is not a trailing comment.** Put
+it above the declaration instead of hand-indenting a continuation under an
+imaginary column:
+
+```pascal
+// BAD
+  CeilingBumpDivisor = 6;  // head bump keeps 1/6 of the boost (a bare 6
+                           // in 2008 - same digit as JumpDel, presumed
+                           // coincidence, kept separate)
+
+// GOOD
+  // Head bump keeps 1/6 of the boost. Was a bare 6 in the 2008 source - same
+  // digit as JumpDel, presumed coincidence, kept as a separate constant.
+  CeilingBumpDivisor = 6;
 ```
 
 ### Line width and indentation
