@@ -1,6 +1,6 @@
 # CODESTYLE.md
 
-**Version 4.4**
+**Version 4.5**
 
 Modern, strict, homogeneous Object Pascal (Delphi). This document is the
 **source of truth** for any human or LLM writing or reviewing code in this
@@ -726,6 +726,38 @@ Three reasons this matters:
 
 The guide is a tool for writing the code, not a footnote inside it. Traces of
 the process do not belong in the product.
+
+### No aligned columns inside block comments either
+§3 bans alignment in code; the same applies to prose inside `{ }` headers. A
+column of names padded so the dashes line up breaks on the first entry that
+outgrows it - and one always does - leaving continuation lines hand-indented
+under a column that no longer exists. Worse, the names in such lists are usually
+real identifiers, so renaming one breaks the layout exactly the way it breaks a
+`var` section.
+
+```pascal
+// BAD - padded column; Done/Error/Cost already broke it,
+// and Review's continuations hang under an imaginary column
+{
+  Task      - right-aligned collapsible bubble.
+  Thinking  - plain dim text row (no bubble).
+  Review    - tinted bubble, three styles:
+                rejection (red), approved (green flat)
+  Done/Error/Cost - slim status bars.
+}
+
+// GOOD - bullet and colon; nothing to keep aligned, entries of any length
+{
+  - Task: right-aligned collapsible bubble.
+  - Thinking: plain dim text row (no bubble).
+  - Review: tinted bubble, three styles - rejection (red),
+    approved (green flat).
+  - Done/Error/Cost: slim status bars.
+}
+```
+
+Separator lines, boxes and ASCII rules are fine - they are fixed-width
+decoration tied to nothing, so nothing can break them.
 
 ### `//` vs `{ }`
 - **`//`** - all real comments, always. This is the default for every category
