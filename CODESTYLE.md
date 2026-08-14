@@ -1,6 +1,6 @@
 # CODESTYLE.md
 
-**Version 4.3**
+**Version 4.4**
 
 Modern, strict, homogeneous Object Pascal (Delphi). This document is the
 **source of truth** for any human or LLM writing or reviewing code in this
@@ -694,6 +694,38 @@ something that should have lived in a name or in the structure. Four categories:
    ```pascal
    // TODO: switch to streaming once the SDK supports SSE (tracked: issue #47)
    ```
+
+### A comment explains the code, not how the code came to be
+No references to this guide, no names, no "as agreed", no "requested by". The
+reason for a decision belongs in the code; the provenance of that reason does
+not.
+
+```pascal
+// BAD - cites the guide; the reference rots the moment sections are renumbered,
+// and adds nothing a reader of the code needs
+// === Free helpers - no control state involved (guide, 9) ===
+
+// BAD - attributes the decision to a person
+// Ilia's decision: keep the timeout at 30 seconds
+
+// GOOD - states the reason, which is what the reader actually needs
+// Gateway drops the connection at 35s; 30 leaves margin
+```
+
+Three reasons this matters:
+- **Git already stores authorship, and stores it correctly.** A name in a
+  comment duplicates `git blame` but, unlike it, never updates - a year later
+  someone else has rewritten the line and the comment still credits you.
+- **Authorship is not the knowledge the reader needs.** "Who decided" answers
+  nothing; "why" answers everything and stays useful regardless of who thought
+  of it.
+- **A name turns a technical decision into a question of authority.** While the
+  comment says "the gateway drops at 35s", anyone can verify it, argue with it,
+  change it. Once it says "Ilia's decision", disputing the decision means
+  disputing Ilia. The comment stops being an argument and becomes a signature.
+
+The guide is a tool for writing the code, not a footnote inside it. Traces of
+the process do not belong in the product.
 
 ### `//` vs `{ }`
 - **`//`** - all real comments, always. This is the default for every category
