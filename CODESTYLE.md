@@ -1,6 +1,6 @@
 # CODESTYLE.md
 
-**Version 4.5**
+**Version 4.6**
 
 Modern, strict, homogeneous Object Pascal (Delphi). This document is the
 **source of truth** for any human or LLM writing or reviewing code in this
@@ -267,6 +267,44 @@ imaginary column:
   // digit as JumpDel, presumed coincidence, kept as a separate constant.
   CeilingBumpDivisor = 6;
 ```
+
+### Blank lines: phrase the body, do not pad it
+A blank line marks a boundary between phases inside a method - the same
+horizontal line §6 uses to decide on extraction, applied below the extraction
+threshold. When a phase is too small to deserve its own method (three lines used
+nowhere else), a blank line is what separates it.
+
+The test is the same: **does the subject change?** Building an object, then
+mutating form state, are two subjects. Computing a value, then applying it, are
+two subjects.
+
+```pascal
+// GOOD - object construction above, form state below
+  HeaderLabel.TextSettings.HorzAlign := TTextAlign.Center;
+
+  FNextChatY := HeaderLabel.Position.Y + HeaderLabel.Height + 4;
+  FChatBubbles.Add(HeaderLabel);
+  ChatScrollToBottom;
+```
+
+```pascal
+// GOOD - three-line method, and the boundary is still real:
+// reset the model, then redraw the UI
+  FConfig.SetDefaults;
+
+  FillCombos;
+  SyncConfigToUI;
+```
+
+**Specific places, not everywhere.** A blank line is punctuation; used
+indiscriminately it stops meaning anything:
+
+- **Not** after `begin`, **not** before `end` - that is padding, not phrasing.
+- **Not** between every statement. Air everywhere is air nowhere.
+- **Not** to separate lines that share a subject - four consecutive property
+  assignments on the same object are one phrase.
+- If a body needs **more than four or five** groups, the blank lines are
+  reporting a different problem: read §6 and extract.
 
 ### Line width and indentation
 - **Soft limit 100 columns.** Past 100, wrap. Under 100, use judgement - a hard
