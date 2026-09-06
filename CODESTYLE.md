@@ -1,6 +1,6 @@
 # CODESTYLE.md
 
-**Version 4.6**
+**Version 4.7**
 
 Modern, strict, homogeneous Object Pascal (Delphi). This document is the
 **source of truth** for any human or LLM writing or reviewing code in this
@@ -20,6 +20,29 @@ public code. Delphi makes this worse than most: the public corpus is decades
 deep and largely pre-modern, so the statistical pull runs toward the old way.
 This document exists to override that default. The more concrete the rule, the
 less the generated code slides back into the statistical average.
+
+### Scope: the guide governs code you author
+Every rule below applies to the code being written now - new units, new
+methods, and the lines a change actually touches. None of them is a mandate to
+bring the surrounding code up to date.
+
+- **Existing code that breaks a rule stays as it is** until a restyle is
+  explicitly requested. Not "while I am here", not "it was only three lines".
+- **A point change stays a point change.** Fix the line, not its neighbours.
+  Formatting counts: a one-line fix must not arrive as a forty-line diff because
+  the colons and blank lines got tidied on the way past.
+- **A restyle is its own change.** When it is requested, it ships separately
+  from any behaviour change, so each diff can be read for one intent.
+- **New code inside an old unit follows the guide** - it is authored code -
+  except where the unit has a visible local convention the guide contradicts
+  (§1, unit prefixes). There, uniformity within the file wins.
+
+Its appearances later: unit prefixes in legacy projects (§1), `with` in old
+units (§4), generated files (§16).
+
+Why this needs saying: a diff that mixes a fix with tidying cannot be reviewed
+for either, and a guide read as a licence to sweep turns every task into a
+rewrite of whatever it happened to touch.
 
 ### The extraction principle
 One move recurs throughout this guide under different names. Naming it once so
@@ -175,7 +198,7 @@ third-party units - the RTL needs it, you do not.
 
 **Legacy projects keep their prefix.** A codebase already full of `u*.pas`
 stays that way: uniformity beats modernity. Mixing the two styles in one folder
-is worse than either style consistently applied.
+is worse than either style consistently applied. (Scope rule, intro.)
 
 ### No double negations
 `IsValid`, not `IsNotInvalid`. A name that must be mentally inverted at every
@@ -350,7 +373,8 @@ directives.
 
 **Three or more terms in a condition is a candidate for a named function.** Even
 correctly wrapped, the example above reads poorly; the real fix removes the wrap
-entirely:
+entirely. (When the terms mix `and` with `or`, it stops being a candidate and
+becomes the rule in §4.)
 
 ```pascal
 if IsRetryable(Response.StatusCode) and FRetryPolicy.ShouldRetry(FAttemptCount) then
@@ -394,6 +418,95 @@ if AConfig.ApiKey = '' then
   raise EAgentError.Create(SMissingApiKey);
 // ... main logic, un-nested
 ```
+
+### Nesting budget for statements
+Every level of nesting is paid by every line beneath it: a statement three
+levels deep is read with three conditions held in the head, and a guard that
+removes the outer `if` makes the whole body cheaper, not one line. That is why
+guards come first, and why this budget is small.
+
+Count the control structures a statement sits inside - `if`, `case`, loops.
+`try` does not count: it brackets a lifetime (§15), it does not branch.
+
+- **Two levels**: fine. A loop with a filter inside it is everyday code.
+- **Third level**: yellow card. First look for a guard or a `Continue` that
+  flattens it; if none applies, the body from the second level down becomes a
+  method with a name.
+- **Fourth level**: not written. Extract before it exists.
+
+```pascal
+// YELLOW - three deep, and the real work sits at the bottom of the stairs
+for var Item in Items do
+  if Item.Enabled then
+    case Item.Kind of
+      ikFile: ...;
+      ikDir: ...;
+    end;
+
+// GOOD - a guard flattens the filter, a method owns the decision
+for var Item in Items do
+begin
+  if not Item.Enabled then
+    Continue;
+  ProcessItem(Item);
+end;
+```
+
+### Mixed `and` / `or` in one condition: name the parts
+A chain of one operator reads as a list - `A and B and C` is three things that
+must all hold, however long it gets. The moment `and` and `or` meet in the same
+expression the reader is evaluating precedence, not intent - and in Pascal
+`and` binds tighter than `or`, so the intent is often not what the line says.
+
+> **Rule:** `and` and `or` mixed in one expression → give each homogeneous part
+> a name. An inline `var` when the fact is local to the method; a function when
+> it is needed a second time (§9).
+
+```pascal
+// BAD - the reader is doing precedence, and the parentheses admit it
+if (Owner = FUserId) and Active or (Role in [rAdmin, rRoot]) then
+
+// GOOD - two facts, one decision
+var IsOwner := (Owner = FUserId) and Active;
+var IsAdmin := Role in [rAdmin, rRoot];
+if IsOwner or IsAdmin then
+```
+
+`not` over a bracketed group is the same problem in a hat - name the group.
+
+### `case` over an `else if` ladder
+Three or more branches that all test the **same value** are a `case`, not an
+`if / else if` ladder. A `case` compares one value against a list of literals
+and is taken in at a glance; a ladder may compare anything against anything on
+every rung, so every rung has to be read to confirm it still tests the same
+thing.
+
+`case` needs an ordinal. When the value is a string, that is information, not
+an obstacle:
+- **Your own vocabulary** (a kind, a mode, a state) → it should have been an
+  enum from the start; §6 already asks for one at the call site.
+- **A protocol value** (JSON field, command line) → decode the string into an
+  enum once, at the boundary where it enters (§7 keeps the spellings as
+  constants), and `case` on the enum everywhere else. One place knows the
+  spelling.
+
+```pascal
+// BAD - grows a rung per kind, and each rung re-reads Kind
+if Kind = 'file' then ...
+else if Kind = 'dir' then ...
+else if Kind = 'link' then ...
+
+// GOOD - the string is decoded once, the logic reads the enum
+case ParseItemKind(Kind) of
+  ikFile: ...;
+  ikDir: ...;
+  ikLink: ...;
+end;
+```
+
+Two branches stay an `if / else`. A ladder whose rungs test **different**
+values is not a `case` candidate - it is a decision table, and usually a sign
+the branches want to be separate methods.
 
 ### Single statement after `if` / `for`
 No `begin/end` for a single statement. Keep one-liners as one line:
@@ -440,7 +553,7 @@ If the target is a **record**, that local is a copy - assign it back (§10,
 property-copy trap). For a class instance it works as written.
 
 Legacy code keeps its `with` blocks; do not sweep through old units rewriting
-them.
+them (scope rule, intro).
 
 ---
 
@@ -496,7 +609,10 @@ begin
 end;
 ```
 
-### Nesting budget
+### Nesting budget for declarations
+Statements have their own depth budget in §4. This one is about declarations -
+a subprogram declared inside a subprogram.
+
 Indentation is a speedometer, not a price. Two spaces on a three-line helper is
 nothing. Two spaces that grow their **own** two spaces inside is the signal:
 you have built a program inside a program - unwind it into methods.
@@ -506,6 +622,40 @@ you have built a program inside a program - unwind it into methods.
 - When the main `begin` disappears under a mountain of nested declarations and
   you have to hunt for the entry point like a hidden stash - extract to methods.
   The main `begin` should read like a table of contents, not a treasure map.
+
+### Anonymous methods are nested subprograms with a longer life
+The three-step test above applies to an anonymous method unchanged; the only
+difference is that its capture may outlive the enclosing call. So:
+
+- **Captures nothing from the enclosing method** → it is a named method in a
+  disguise. Write the method and pass it: a `reference to` type accepts a
+  method or a plain procedure directly, no wrapper needed.
+- **Genuinely captures a local** → anonymous is justified, and as short as the
+  capture allows.
+- **Anonymous inside anonymous - never.** Each one is a nesting level that
+  arrives with no `if` or `for` in sight, and callback stairs are the one way a
+  method blows the §4 budget without a single branch. The inner one becomes a
+  named method; whatever it needed from the outer scope becomes a parameter.
+
+```pascal
+// BAD - two levels of capture, and the logic is two indents from daylight
+FClient.Send(Request,
+  procedure(const AResponse: string)
+  begin
+    FParser.Parse(AResponse,
+      procedure(const AResult: TParseResult)
+      begin
+        ...
+      end);
+  end);
+
+// GOOD - one level, and the inner step has a name and a signature
+FClient.Send(Request,
+  procedure(const AResponse: string)
+  begin
+    FParser.Parse(AResponse, HandleParsed);
+  end);
+```
 
 ### Naming subprograms
 Verb phrases, **no prefix**: `BuildRequestBody`, `AppendUserMessage`,
@@ -1225,4 +1375,5 @@ Multiple asserts in one test are fine when they describe **one** behavior
 ### Generated files are out of scope
 DUnitX project files, IDE scaffolding, designer output - do not restyle them.
 Lowercase locals in a generated `.dpr` are not a violation to fix; the next
-regeneration erases the edit anyway. The guide governs code you author.
+regeneration erases the edit anyway. The guide governs code you author (scope
+rule, intro).
