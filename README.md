@@ -49,5 +49,7 @@ log.
 
 ## License
 
-Text and examples - [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/).
-Use it, fork it, adapt it to your codebase, keep the attribution.
+Copyright (c) 2026 Ilia Kuzmin.
+
+[CC BY 4.0](LICENSE). Use it, fork it, adapt it to your codebase - just credit
+the source and note what you changed.
