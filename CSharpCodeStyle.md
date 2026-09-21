@@ -1,13 +1,13 @@
 # CSharpCodeStyle.md
 
-**Version 4.7.1**
+**Version 4.8.2**
 
 Pragmatic modern C#. This document is the **source of truth** for any human or
 LLM writing or reviewing C# in this project. Version numbers are shared with
-`CODESTYLE.md` (Delphi) - the two guides move together.
+`CODESTYLE.md` (Delphi) - major and minor move together, patches may differ.
 
 The guiding principle: **code is read far more often than it is written.**
-Optimize for the reviewer six months from now, not for the fastest way to make
+Optimize for the reader who comes after you, not for the fastest way to make
 it compile today.
 
 Two supporting principles, applied throughout:
@@ -15,6 +15,14 @@ Two supporting principles, applied throughout:
 - **Expedience.** Exactly as much machinery as carries meaning, not one turn
   more. Neither the oldest way nor the newest - the one that pays for itself.
 - **Uniformity.** A consistently applied older style beats a mix of two styles.
+
+### Reading the examples
+The guide speaks only in the label line above a block - `// BAD - ...`,
+`// GOOD - ...` and their relatives. Inside a BAD block a comment may point at
+the defect. Inside a GOOD block - and an unlabeled block is a GOOD block -
+every comment is a real one and passes the erasure test (§5). `// ...` marks
+elided code, not a comment. A GOOD example is a sample to imitate, and an LLM
+imitates the comments along with the code.
 
 ### Why this document is short
 Half of a style guide's traditional content - indentation, brace placement,
@@ -188,11 +196,12 @@ or a domain exception; inside the type, §7 already proves what is not null -
 do not re-guard it.
 
 ```csharp
+// GOOD - two guards, then the happy path at zero depth
 if (config is null)
     return;
 if (string.IsNullOrEmpty(config.ApiKey))
     throw new AgentException(MissingApiKey);
-// ... main logic, un-nested
+// ...
 ```
 
 ### Nesting budget
@@ -307,18 +316,55 @@ the branches want to be separate methods.
 
 ## 5. Comments
 
-A comment is not a sin. It becomes one when it compensates for something that
-belongs in a name or in the structure.
+The code should read as a story on its own; a comment is a rare insert where
+the story falls silent.
 
-1. **What the code does** → delete it; rename instead.
-2. **Why** → keep when not self-evident. The code says *what*; it cannot say
-   where a magic value came from or why a decision was made.
-3. **Warning about fragile ordering** → keep, but as a fallback. First ask
-   whether the structure can make the wrong order impossible.
-4. **TODO / FIXME with a real reference** → keep. `// TODO: fix this` is litter.
+### The addressee is the reader five years from now
+Not today's reviewer. A comment that explains a **change** - why something was
+replaced or removed, why the new way beats the old - answers a question nobody
+asks a year later: the file holds no "before". Its home is the commit message
+or the PR. Generated code likewise: an explanation for the reviewer goes in the
+reply or the commit, not into the method body.
+
+### The erasure test
+> **Erase the comment. Would the next conscientious developer, making a
+> routine edit, "fix" the code into a bug? Yes → it stays, as short as
+> possible. No → it goes.**
+
+"Would understand it slower" is a naming problem, not a break. Three kinds pass,
+all about what code cannot say:
+
+- **Why not the obvious alternative** - the rejected option looks like an
+  improvement.
+- **External fact** - an API limit, a protocol constraint, the origin of a
+  number (§6).
+- **Trap** - an order that carries meaning, a sync-over-async bridge that
+  exists on purpose (§8). Fallback, not first resort: first ask whether the
+  structure can make the wrong edit impossible.
+
+One fact, one comment: what is said at the declaration is not repeated at the
+use.
+
+### Before a comment, try a name - but a name is not free
+A name replaces *what*, never *why*. Climb the cost ladder, stop at the first
+rung that works: rename what exists → a local or a constant → an enum → a
+method, and the method only if it passes §2 on its own merits (a phase line or
+a second caller). Nothing fits → a blank line marks the phase. Extraction is
+not a way to give three lines a heading.
+
+Litmus for the name: longer than four or five words, or with `And` inside - it
+is a comment in PascalCase. `ValidateInputAndLogFailureUnlessQuiet` is not a
+method, it is a confession.
+
+### Two exceptions to the erasure test
+- **TODO / FIXME with a real reference.** It is a debt receipt, not an
+  explanation, so it lives only with a tracker reference. `// TODO: fix this`
+  is litter.
+- **XML docs on public API** - below.
 
 ### A comment explains the code, not how the code came to be
-No references to this guide, no names, no "as agreed", no "requested by".
+No references to this guide, no names, no "as agreed", no "requested by", no
+edit history ("was X", "fixed the crash").
 
 ```csharp
 // BAD - cites the guide; rots on renumbering, helps no reader
@@ -328,19 +374,19 @@ No references to this guide, no names, no "as agreed", no "requested by".
 // Ilia's decision: keep the timeout at 30 seconds
 
 // GOOD - states the reason, which is what the reader needs
-// Gateway drops the connection at 35s; 30 leaves margin
+// HttpClient is per-thread here; created in the handler, not the constructor
 ```
 
-Three reasons: git already stores authorship and stores it correctly; authorship
-is not the knowledge the reader needs; and a name turns a technical decision into
-a question of authority - while the comment says "the gateway drops at 35s",
-anyone can verify and change it, but once it says whose decision it was,
-disputing the decision means disputing the person.
+Three reasons: git already stores authorship and history and stores them
+correctly; provenance is not the knowledge the reader needs; and a name turns a
+technical decision into a question of authority - while the comment says "the
+gateway drops at 35s", anyone can verify and change it, but once it says whose
+decision it was, disputing the decision means disputing the person.
 
 ### XML docs on public API only
 `/// <summary>` on public members of a library or shared contract. Do not
 generate doc comments that restate the signature (`/// <summary>Gets the
-name.</summary>` on `Name`) - that is category 1 with extra ceremony.
+name.</summary>` on `Name`) - that is a *what* comment with extra ceremony.
 
 ---
 
@@ -515,7 +561,7 @@ GC handles memory; it does not handle **resources**. Ownership of anything
 await using var stream = File.OpenRead(path);
 
 // GOOD - injected, so NOT disposed here
-public sealed class ReportService(HttpClient client)  // container owns client
+public sealed class ReportService(HttpClient client)
 ```
 
 ---

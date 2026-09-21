@@ -1,6 +1,6 @@
 # CODESTYLE.md
 
-**Version 4.7**
+**Version 4.8.2**
 
 Modern, strict, homogeneous Object Pascal (Delphi). This document is the
 **source of truth** for any human or LLM writing or reviewing code in this
@@ -8,7 +8,7 @@ project. When generating code, follow these rules over statistically common
 patterns found elsewhere.
 
 The guiding principle behind every rule below: **code is read far more often
-than it is written.** Optimize for the reviewer six months from now, not for
+than it is written.** Optimize for the reader who comes after you, not for
 the fastest way to make it compile today.
 
 ### Why this document exists
@@ -20,6 +20,17 @@ public code. Delphi makes this worse than most: the public corpus is decades
 deep and largely pre-modern, so the statistical pull runs toward the old way.
 This document exists to override that default. The more concrete the rule, the
 less the generated code slides back into the statistical average.
+
+### Reading the examples
+The guide speaks only in the label line above a block - `// BAD - ...`,
+`// GOOD - ...`, `// TRAP - ...` and their relatives. Inside a BAD block a
+comment may point at the defect. Inside a GOOD block - and an unlabeled block
+is a GOOD block - every comment is a real one and passes the erasure test
+(§8). `// ...` marks elided code, not a comment.
+
+Why: a GOOD example is a sample to imitate, and an LLM imitates the comments
+along with the code. A footnote for the student left inside the sample becomes
+a comment in every file generated from it.
 
 ### Scope: the guide governs code you author
 Every rule below applies to the code being written now - new units, new
@@ -223,8 +234,11 @@ Use inference when the type is obvious from the right-hand side. Spell the type
 out when the right-hand side does not make it clear:
 
 ```pascal
-var Count := List.Count;          // obvious - Integer, inference is fine
-var ContentArr: TJSONArray := ...;  // not obvious from RHS - state it
+// GOOD - obvious from the right-hand side, inference is fine
+var Count := List.Count;
+
+// GOOD - not obvious from the right-hand side, state the type
+var ContentArr: TJSONArray := ...;
 ```
 
 ### `const` on parameters
@@ -264,16 +278,20 @@ var
 ```pascal
 // BAD - aligned values and aligned trailing comments
 const
-  JumpDel = 6;       // jump deceleration divisor
-  StartUscor = 4;    // initial jump boost multiplier
-  Gravity = Step / 14;     // per-tick fall acceleration
+  MaxToolCallsPerTurn = 20;   // API rejects more tool_use blocks per turn
+  RequestTimeoutSec = 30;     // gateway drops the connection at 35s
+  MaxRetries = 3;
 
 // GOOD - one space before //, let the ends fall where they fall
 const
-  JumpDel = 6; // jump deceleration divisor
-  StartUscor = 4; // initial jump boost multiplier
-  Gravity = Step / 14; // per-tick fall acceleration
+  MaxToolCallsPerTurn = 20; // API rejects more tool_use blocks per turn
+  RequestTimeoutSec = 30; // gateway drops the connection at 35s
+  MaxRetries = 3;
+  JumpDecelDivisor = 6;
 ```
+
+Note `MaxRetries`: the name says everything, so it carries no comment. A
+constant does not earn a comment by being a constant (§8).
 
 **A trailing comment that needs a second line is not a trailing comment.** Put
 it above the declaration instead of hand-indenting a continuation under an
@@ -281,13 +299,13 @@ imaginary column:
 
 ```pascal
 // BAD
-  CeilingBumpDivisor = 6;  // head bump keeps 1/6 of the boost (a bare 6
-                           // in 2008 - same digit as JumpDel, presumed
-                           // coincidence, kept separate)
+  CeilingBumpDivisor = 6;  // same value as JumpDecelDivisor, different
+                           // meaning - two constants on purpose,
+                           // do not merge
 
 // GOOD
-  // Head bump keeps 1/6 of the boost. Was a bare 6 in the 2008 source - same
-  // digit as JumpDel, presumed coincidence, kept as a separate constant.
+  // Same value as JumpDecelDivisor, different meaning - two constants on
+  // purpose, do not merge.
   CeilingBumpDivisor = 6;
 ```
 
@@ -412,11 +430,12 @@ Prefer early exit over a nested `if` ladder. Guards flatten the method and keep
 the happy path un-indented:
 
 ```pascal
+// GOOD - two guards, then the happy path at zero depth
 if not Assigned(AConfig) then
   Exit;
 if AConfig.ApiKey = '' then
   raise EAgentError.Create(SMissingApiKey);
-// ... main logic, un-nested
+// ...
 ```
 
 ### Nesting budget for statements
@@ -719,7 +738,7 @@ begin
 
   if Response.StatusCode <> 200 then
     raise EAgentError.CreateFmt('HTTP %d from Anthropic: %s',
-                              [Response.StatusCode, RespStr]);
+      [Response.StatusCode, RespStr]);
 
   Result := TJSONObject.ParseJSONValue(RespStr) as TJSONObject;
   if Result = nil then
@@ -755,8 +774,8 @@ more than one place → extract) applies to a repeated *template*, not just to a
 repeated *fragment*.
 
 ```pascal
-function MakeTool(const AName, ADesc: string;
-                  AProps: TJSONObject; AReq: TJSONArray): TJSONObject;
+function MakeTool(const AName, ADesc: string; AProps: TJSONObject;
+  AReq: TJSONArray): TJSONObject;
 var
   Params: TJSONObject;
   Func: TJSONObject;
@@ -813,7 +832,7 @@ one-off string usually is not.
 // GOOD - magic number becomes a named constant near its origin,
 // with a comment explaining WHERE the number comes from (not what it does).
 const
-  MaxToolCallsPerTurn = 20; // API limit: rejects requests with more tool_use blocks
+  MaxToolCallsPerTurn = 20; // API rejects more tool_use blocks per turn
 
 if ToolCalls.Count > MaxToolCallsPerTurn then
   raise EAgentError.Create(STooManyToolCalls);
@@ -850,43 +869,107 @@ resourcestring
 
 ## 8. Comments
 
-A comment is not a sin in itself. It becomes one when it compensates for
-something that should have lived in a name or in the structure. Four categories:
+The code should read as a story on its own; a comment is a rare insert where
+the story falls silent. Two questions decide every comment: who it is for, and
+what breaks without it.
 
-1. **What the code does** → delete it. Rename or restructure instead. If a
-   comment is needed to explain *what* the code does, the code is written badly.
-   ```pascal
-   // BAD
-   Inc(RetryCount); // increment retry counter
-   ```
-2. **Why** → keep, if not self-evident. The code honestly says *what*; it cannot
-   say *where a magic value came from* or *why a decision was made*.
-   ```pascal
-   // API rejects requests with more than 20 tool_use blocks per turn
-   ```
-3. **Warning about fragile / non-obvious order** → keep, but as a fallback,
-   not a first resort. First ask whether the architecture can make the wrong
-   order impossible (encapsulate the teardown in one method, transfer
-   ownership so only one owner frees). When enforcement would cost more than
-   it protects - e.g. wrapping two adjacent `Free` calls in machinery - the
-   warning comment stays legitimate. No variable name can express that two
-   adjacent lines carry order-dependent meaning.
-   ```pascal
-   // Order matters: FHttpClient must be freed before FConnection,
-   // otherwise pending requests crash on the dangling connection
-   FHttpClient.Free;
-   FConnection.Free;
-   ```
-4. **TODO / FIXME with context** → keep, but with a real reference, not a
-   hieroglyph. `// TODO: fix this` is litter buried in code.
-   ```pascal
-   // TODO: switch to streaming once the SDK supports SSE (tracked: issue #47)
-   ```
+### The addressee is the reader five years from now
+Not today's reviewer. A comment that explains a **change** - why something was
+replaced, why it was removed, why the new way beats the old - answers a
+question nobody will ask a year later: the file holds no "before". Its home is
+the commit message, the PR description, the docs.
+
+The same goes for generated code: an explanation meant for the reviewer goes in
+the reply or the commit, not into the method body.
+
+```pascal
+// BAD - justifies the edit; the reader never saw the helper this replaced
+// Plain comparison - works the same for integer and float inputs
+if AZoom < 1 then
+  AZoom := 1;
+```
+
+### The erasure test
+> **Erase the comment. Would the next conscientious developer, making a
+> routine edit, "fix" the code into a bug? Yes → it stays, as short as
+> possible. No → it goes.**
+
+"Would understand it slower" is not a break - that is a naming problem, and the
+next subsection handles it. The test is passed by three kinds of comment, all
+about what code physically cannot say:
+
+- **Why not the obvious alternative.** The rejected option does not exist in
+  the code, and it looks like an improvement.
+  ```pascal
+  // Gateway drops the connection at 35s; 30 leaves margin
+  ```
+- **External fact.** An API limit, a file format, where a number came from
+  (§7).
+- **Trap.** Two lines whose order carries meaning, a unit listed only for its
+  `initialization` (§12), a branch that is empty on purpose (§11).
+  ```pascal
+  // FHttpClient before FConnection - pending requests crash on a dangling
+  // connection otherwise
+  FHttpClient.Free;
+  FConnection.Free;
+  ```
+
+For a trap, the comment is the fallback, not the first resort. First ask
+whether the architecture can make the wrong edit impossible - encapsulate the
+teardown in one method, transfer ownership so only one owner frees. When
+enforcement would cost more than it protects - machinery around two adjacent
+`Free` calls - the comment stays legitimate.
+
+**One fact, one comment.** What is said at the declaration is not repeated at
+the use.
+
+### Before a comment, try a name - but a name is not free
+A name replaces *what*, never *why*. "The gateway drops at 35s" fits into no
+identifier - do not try. So the name route applies only to comments describing
+what the code does: the erasure test deletes those anyway, and the name is
+where their content goes.
+
+Climb the cost ladder and stop at the first rung that works:
+
+1. **Rename what already exists.** Zero new entities.
+2. **An inline `var` or a constant** (§4, §7).
+3. **An enum** (§6).
+4. **A method** - only if it passes §5 and §6 on its own merits: a phase line,
+   or a second caller. Extraction is not a way to give three lines a heading.
+5. **Nothing fits** → a blank line (§3) marks the phase, and the code stays as
+   it is.
+
+Litmus for the name itself: longer than four or five words, or with `And`
+inside - it is not a name, it is a comment in PascalCase.
+`ValidateInputAndLogFailureUnlessQuiet` is not a method, it is a confession.
+
+```pascal
+// BAD - the comment works as an interpreter for the name
+const
+  ScaleMult = 10; // one decimal place
+...
+Result := Round(AScale * ScaleMult) / ScaleMult;
+
+// GOOD - needed in a second place, so it became a function; its name
+// explains the number
+Result := RoundToTenths(AScale);
+```
+
+### Two exceptions to the erasure test
+- **TODO / FIXME with a real reference.** Erasing one breaks nothing - it is a
+  debt receipt, not an explanation - so it lives only with a tracker
+  reference. `// TODO: fix this` is litter buried in code.
+  ```pascal
+  // TODO: switch to streaming once the SDK supports SSE (tracked: issue #47)
+  ```
+- **A unit header** in `{ }` at the very top: what the unit is for and what it
+  deliberately does not do. A few lines, no history, no changelog - git keeps
+  those.
 
 ### A comment explains the code, not how the code came to be
-No references to this guide, no names, no "as agreed", no "requested by". The
-reason for a decision belongs in the code; the provenance of that reason does
-not.
+No references to this guide, no names, no "as agreed", no "requested by", no
+edit history ("was X", "fixed the crash", "changed to Y because"). The reason
+for a decision belongs in the code; the provenance of that reason does not.
 
 ```pascal
 // BAD - cites the guide; the reference rots the moment sections are renumbered,
@@ -897,16 +980,17 @@ not.
 // Ilia's decision: keep the timeout at 30 seconds
 
 // GOOD - states the reason, which is what the reader actually needs
-// Gateway drops the connection at 35s; 30 leaves margin
+// Registry handle is per-thread; opened here, not in the constructor
 ```
 
 Three reasons this matters:
-- **Git already stores authorship, and stores it correctly.** A name in a
-  comment duplicates `git blame` but, unlike it, never updates - a year later
-  someone else has rewritten the line and the comment still credits you.
-- **Authorship is not the knowledge the reader needs.** "Who decided" answers
-  nothing; "why" answers everything and stays useful regardless of who thought
-  of it.
+- **Git already stores authorship and history, and stores them correctly.** A
+  name or a "was X" in a comment duplicates `git blame` and `git log` but,
+  unlike them, never updates - a year later someone else has rewritten the
+  line and the comment still credits you.
+- **Provenance is not the knowledge the reader needs.** "Who decided" and "what
+  it used to be" answer nothing; "why" answers everything and stays useful
+  regardless of who thought of it.
 - **A name turns a technical decision into a question of authority.** While the
   comment says "the gateway drops at 35s", anyone can verify it, argue with it,
   change it. Once it says "Ilia's decision", disputing the decision means
@@ -948,11 +1032,10 @@ Separator lines, boxes and ASCII rules are fine - they are fixed-width
 decoration tied to nothing, so nothing can break them.
 
 ### `//` vs `{ }`
-- **`//`** - all real comments, always. This is the default for every category
+- **`//`** - all real comments, always. This is the default for every kind
   above.
 - **`{ }`** - only for temporarily disabling a block of code during debugging,
-  or a block header at the very top of a file/unit (license, authorship, unit
-  overview). Used to explain logic mid-method, `{ }` reads as leftover debug
+  or a block header at the very top of a file/unit (license, unit overview). Used to explain logic mid-method, `{ }` reads as leftover debug
   litter - it is visually indistinguishable from commented-out code. That usage
   is a relic of pre-`//` Turbo Pascal.
 
@@ -976,11 +1059,14 @@ decoration tied to nothing, so nothing can break them.
   type
     TAgentClient = class
     public
-      class function CreateDefault: TAgentClient;                    // factory
-      class function IsValidModelName(const AName: string): Boolean; // class-bound knowledge
-      class var InstanceCount: Integer;                              // shared class state
+      class function CreateDefault: TAgentClient;
+      class function IsValidModelName(const AName: string): Boolean;
+      class var InstanceCount: Integer;
     end;
   ```
+
+  A factory, class-bound knowledge, shared class state - the names already
+  say which is which.
 
   The test: **does this logic depend on being on this particular class, or would
   it work for anything?** Depends → `class function`. Does not → free function.
@@ -1013,7 +1099,7 @@ Two tests - either one firing is enough to group:
        Port: Integer;
        User: string;
        Password: string;
-       function Enabled: Boolean; // small derived helpers are fine
+       function Enabled: Boolean;
      end;
    // ...
    FProxy: TProxySettings;
@@ -1066,9 +1152,10 @@ much as carries meaning, not one turn more.
 // BAD - a clause inside a clause; read to the end, forget the start
 FGroups: TObjectDictionary<string, TList<TPair<Integer, TMonster>>>;
 
-// GOOD - the inner type gets a name, the outer generic is one level again
+// GOOD - the inner TList<TPair<...>> gets a name, TMonsterGroup; the outer
+// generic is one level again
 type
-  TMonsterGroup = class ... end;   // wraps the inner TList<TPair<...>>
+  TMonsterGroup = class ... end;
 // ...
 FGroups: TObjectDictionary<string, TMonsterGroup>;
 ```
@@ -1124,7 +1211,7 @@ end;
 
 procedure TAgent.Log(const AText: string);
 begin
-  WriteToPlatformLog(AText); // reads the same on every platform
+  WriteToPlatformLog(AText);
 end;
 ```
 
