@@ -20,7 +20,7 @@ model to follow and short enough for a reviewer to hold in their head.
 | `CSharpCodeStyle.md` | The C# companion - same principles, adapted to a language where tooling checks half of them. |
 | `.editorconfig` | Machine-enforced part of the C# guide. |
 
-The two guides share their version number and move together.
+The two guides share major and minor version numbers; patch versions may differ.
 
 ## What it is not
 
@@ -43,8 +43,9 @@ Rules are numbered for that purpose.
 
 ## Versioning
 
-The version lives inside each file (`**Version 4.8.2**` under the title). The
-history of how the rules grew is the git log.
+The version lives inside each file (`**Version 4.8.2**` under the title), and
+each release is tagged in git. The history of how the rules grew is the git
+log.
 
 ## License
 
