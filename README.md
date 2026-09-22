@@ -43,7 +43,7 @@ Rules are numbered for that purpose.
 
 ## Versioning
 
-The version lives inside each file (`**Version 4.8.2**` under the title), and
+The version lives inside each file (`**Version 4.9**` under the title), and
 each release is tagged in git. The history of how the rules grew is the git
 log.
 

@@ -1,6 +1,6 @@
 # CSharpCodeStyle.md
 
-**Version 4.8.2**
+**Version 4.9**
 
 Pragmatic modern C#. This document is the **source of truth** for any human or
 LLM writing or reviewing C# in this project. Version numbers are shared with
@@ -82,9 +82,14 @@ Its appearances:
 - A repeated construction shape → lift into a factory method.
 - Two classes that reference each other → lift the shared contract into an
   interface or a third type both depend on.
+- A behavior that already has a home gets a second copy at the call site - a
+  guard, a wrapper, a special case at the endpoint → read the callee to the
+  end and call it; if the branch almost exists, extend it there. Enabling an
+  existing branch is cheaper than writing a second one.
 
 The failure it prevents is always the same: something with no home of its own
-gets smeared across the places that need it.
+gets smeared across the places that need it - or something with a home gets a
+second one.
 
 ---
 
